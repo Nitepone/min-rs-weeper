@@ -3,4 +3,5 @@ name = "min-rs-weeper"
 version = "0.0.1"
 authors = ["Luna Hart luna@night.horse"]
 
-#[dependencies]
+[dependencies]
+rand = "0.8"
