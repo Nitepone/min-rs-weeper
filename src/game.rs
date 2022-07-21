@@ -32,7 +32,6 @@ pub enum TileState {
 struct StdTile {
     covered: bool,
     mine: bool,
-    cached_mine_count: Option<u8>, // Hmm.. Rethink this if we make evil tile types.
     flag: Option<FlagState>,
 }
 
@@ -41,7 +40,6 @@ impl StdTile {
         StdTile {
             covered: true,
             mine,
-            cached_mine_count: None,
             flag: None,
         }
     }
@@ -51,6 +49,7 @@ trait Tile {
     fn is_covered(&self) -> bool;
     fn is_mine(&self) -> bool;
     fn get_flag(&self) -> Option<FlagState>;
+    fn get_contents(&self, neighbors: Vec<&dyn Tile>) -> TileContents;
     fn get_state(&self, neighbors: Vec<&dyn Tile>) -> TileState;
     fn toggle_flag(&mut self);
     fn uncover(&mut self) -> MinrsResult<bool>;
@@ -66,32 +65,34 @@ impl Tile for StdTile {
     }
 
     fn get_flag(&self) -> Option<FlagState> {
+        if !self.is_covered() {
+            return None;
+        }
         self.flag
     }
 
-    fn get_state(&self, neighbors: Vec<&dyn Tile>) -> TileState {
-        // covered tiles all just return with flag state
-        if self.covered {
-            return TileState::Covered(self.get_flag());
-        }
-
+    fn get_contents(&self, neighbors: Vec<&dyn Tile>) -> TileContents {
         // if we are mine, say so!
         if self.mine {
-            return TileState::Uncovered(TileContents::Mine);
+            return TileContents::Mine;
         }
 
         // finally, we are an empty number tile.
-        if let Some(count) = self.cached_mine_count {
-            return TileState::Uncovered(TileContents::MineCount(count));
-        }
         let count = neighbors.iter().fold(0, |count, n| {
             if n.is_mine() {
                 return count + 1;
             }
             count
         });
-        //self.cached_mine_count = Some(count);
-        return TileState::Uncovered(TileContents::MineCount(count));
+        TileContents::MineCount(count)
+    }
+
+    fn get_state(&self, neighbors: Vec<&dyn Tile>) -> TileState {
+        if self.covered {
+            return TileState::Covered(self.get_flag());
+        } else {
+            return TileState::Uncovered(self.get_contents(neighbors));
+        }
     }
 
     fn toggle_flag(&mut self) {
@@ -208,6 +209,45 @@ impl StdMinrsGame {
             .get(pos.y as usize)
             .ok_or(MinrsError::OobPosition)?)
     }
+
+    fn get_neighbors_pos(&self, pos: &Position) -> MinrsResult<Vec<Position>> {
+        let mut neighbors: Vec<Position> = Vec::new();
+        let x_max = self.board.len() as i32;
+        for x_mod in -1..=1 {
+            let x = (pos.x as i32) + x_mod;
+            if x < 0 || x >= x_max {
+                continue;
+            }
+            let y_max = self
+                .board
+                .get(x as usize)
+                .ok_or(MinrsError::InvalidArgument)?
+                .len() as i32;
+            for y_mod in -1..=1 {
+                let y = (pos.y as i32) + y_mod;
+                if y < 0 || y >= y_max || (y_mod == 0 && x_mod == 0) {
+                    continue;
+                }
+                neighbors.push(Position {
+                    x: x as u8,
+                    y: y as u8,
+                });
+            }
+        }
+        Ok(neighbors)
+    }
+
+    fn get_neighbors(&self, pos: &Position) -> MinrsResult<Vec<&dyn Tile>> {
+        Ok(self
+            .get_neighbors_pos(pos)?
+            .iter()
+            .map(|pos| -> &dyn Tile {
+                // since positions are validated by self.get_neighbors_pos..
+                // we assume we can unwrap (or panic)
+                self.get_tile(pos).unwrap()
+            })
+            .collect())
+    }
 }
 
 impl MinrsGame for StdMinrsGame {
@@ -224,47 +264,58 @@ impl MinrsGame for StdMinrsGame {
         Ok(())
     }
 
-    fn uncover_tile(&mut self, position: &Position) -> MinrsResult<()> {
+    fn uncover_tile(&mut self, pos: &Position) -> MinrsResult<()> {
         if self.game_over {
             return Err(MinrsError::GameOver);
         }
 
-        self.mod_tile(position, |tile| tile.uncover())??;
+        let self_tile = self.get_tile(pos)?;
+        if !self_tile.is_covered() {
+            return Err(MinrsError::InvalidArgument);
+        }
+
+        let neighbors_pos = self.get_neighbors_pos(pos)?;
+        match self_tile.get_contents(self.get_neighbors(pos)?) {
+            TileContents::MineCount(mine_count) => {
+                if mine_count == 0 {
+                    for n_pos in neighbors_pos {
+                        let n = self.get_tile(&n_pos)?;
+                        // block recursion on uncovered or mine
+                        if !n.is_covered() {
+                            continue;
+                        }
+                        if !n.is_mine() {
+                            continue;
+                        }
+                        self.uncover_tile(&n_pos)?;
+                    }
+                }
+            }
+            TileContents::Mine => {
+                self.game_over = true;
+            }
+        }
+
+        self.mod_tile(pos, |tile| tile.uncover())??;
         Ok(())
     }
 
-    fn uncover_neighbors(&mut self, _position: &Position) -> MinrsResult<()> {
-        // TODO Unimplemented!!
+    fn uncover_neighbors(&mut self, _pos: &Position) -> MinrsResult<()> {
+        //TODO implement
+        //let neighbors_flag_count = self.get_neighbors(pos)?.iter().fold(0, |mut flag_count, tile| -> i32 {
+        //    if tile.get_flag().is_some() {
+        //        flag_count += 1;
+        //    }
+        //    flag_count
+        //});
+
         return Err(MinrsError::InvalidArgument);
     }
 
     fn get_tile_state(&mut self, position: &Position) -> MinrsResult<TileState> {
-        let mut neighbors = Vec::new();
-        let x_max = self.board.len() as i32;
-        for x_mod in -1..=1 {
-            let x = (position.x as i32) + x_mod;
-            if x < 0 || x >= x_max {
-                continue;
-            }
-            let y_max = self
-                .board
-                .get(x as usize)
-                .ok_or(MinrsError::InvalidArgument)?
-                .len() as i32;
-            for y_mod in -1..=1 {
-                let y = (position.y as i32) + y_mod;
-                if y < 0 || y >= y_max || (y_mod == 0 && x_mod == 0) {
-                    continue;
-                }
-                let tile = self.get_tile(&Position {
-                    x: x as u8,
-                    y: y as u8,
-                })?;
-                neighbors.push(tile);
-            }
-        }
-
-        Ok(self.get_tile(position)?.get_state(neighbors))
+        Ok(self
+            .get_tile(position)?
+            .get_state(self.get_neighbors(position)?))
     }
 }
 
