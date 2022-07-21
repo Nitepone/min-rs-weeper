@@ -15,11 +15,3 @@ pub enum MinrsError {
     /// Invalid argument. (likely bad controller code?)
     InvalidArgument,
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
-}
