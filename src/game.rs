@@ -136,11 +136,15 @@ pub trait MinrsGame {
     ///        destructive)
     fn uncover_neighbors(&mut self, position: &Position) -> MinrsResult<()>;
     fn get_tile_state(&mut self, position: &Position) -> MinrsResult<TileState>;
+    fn get_width(&self) -> u8;
+    fn get_height(&self) -> u8;
 }
 
 pub struct StdMinrsGame {
     game_over: bool,
     board: Vec<Vec<StdTile>>,
+    width: u8,
+    height: u8,
 }
 
 impl StdMinrsGame {
@@ -148,6 +152,8 @@ impl StdMinrsGame {
         let mut new_game = StdMinrsGame {
             game_over: false,
             board: Vec::new(),
+            width,
+            height,
         };
 
         if width < MIN_BOARD_DIMENSION || height < MIN_BOARD_DIMENSION {
@@ -316,6 +322,14 @@ impl MinrsGame for StdMinrsGame {
         Ok(self
             .get_tile(position)?
             .get_state(self.get_neighbors(position)?))
+    }
+
+    fn get_width(&self) -> u8 {
+        self.width
+    }
+
+    fn get_height(&self) -> u8 {
+        self.height
     }
 }
 
