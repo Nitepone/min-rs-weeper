@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 const MIN_BOARD_DIMENSION: u8 = 8;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Position {
     pub x: u8,
     pub y: u8,
@@ -293,9 +294,10 @@ impl MinrsGame for StdMinrsGame {
     }
 
     fn uncover_tile(&mut self, pos: &Position) -> MinrsResult<()> {
-        if self.game_over {
-            return Err(MinrsError::GameOver);
-        }
+        // XXX(luna) Thinking gameover lockout for uncover shouldn't be done in model.
+        //if self.game_over {
+        //    return Err(MinrsError::GameOver);
+        //}
 
         let self_tile = self.get_tile(pos)?;
         if !self_tile.is_covered() {
@@ -341,16 +343,52 @@ impl MinrsGame for StdMinrsGame {
         Ok(())
     }
 
-    fn uncover_neighbors(&mut self, _pos: &Position) -> MinrsResult<()> {
-        //TODO implement
-        //let neighbors_flag_count = self.get_neighbors(pos)?.iter().fold(0, |mut flag_count, tile| -> i32 {
-        //    if tile.get_flag().is_some() {
-        //        flag_count += 1;
-        //    }
-        //    flag_count
-        //});
+    fn uncover_neighbors(&mut self, pos: &Position) -> MinrsResult<()> {
+        let mine_count;
+        // only allow uncovered tiles with a minecount
+        match self.get_tile_state(pos)? {
+            TileState::Uncovered(contents) => match contents {
+                TileContents::MineCount(count) => {
+                    mine_count = count;
+                }
+                TileContents::Mine => {
+                    return Err(MinrsError::InvalidArgument);
+                }
+            },
+            TileState::Covered(_) => {
+                return Err(MinrsError::InvalidArgument);
+            }
+        }
 
-        return Err(MinrsError::InvalidArgument);
+        // enforce that the user has enough flags placed to make this move
+        let neighbors_flag_count =
+            self.get_neighbors(pos)?
+                .iter()
+                .fold(0, |mut flag_count, tile| -> u8 {
+                    if tile.get_flag().is_some() {
+                        flag_count += 1;
+                    }
+                    flag_count
+                });
+        if neighbors_flag_count < mine_count {
+            return Err(MinrsError::InvalidArgument);
+        }
+
+        // uncover unflagged neighbors
+        let neighbors_pos = self.get_neighbors_pos(pos)?;
+        for n_pos in neighbors_pos {
+            let tile_state = self.get_tile_state(&n_pos)?;
+            match tile_state {
+                TileState::Covered(flag_state) => {
+                    if flag_state.is_none() {
+                        self.uncover_tile(&n_pos)?;
+                    }
+                }
+                TileState::Uncovered(_) => {}
+            }
+        }
+
+        return Ok(());
     }
 
     fn get_tile_state(&mut self, position: &Position) -> MinrsResult<TileState> {

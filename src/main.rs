@@ -1,4 +1,6 @@
 // Copyright 2022 nitepone <luna@night.horse>
+//
+// Mostly gui code in here.. Mostly not cute..
 
 extern crate gtk;
 extern crate rand;
@@ -7,6 +9,7 @@ pub mod error;
 mod game;
 
 use crate::game::{FlagState, MinrsGame, Position, StdMinrsGame, TileContents, TileState};
+use gtk::gdk;
 use gtk::prelude::*;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -28,7 +31,9 @@ fn update_grid(mut game: MutexGuard<StdMinrsGame>, btn_mtx: MutexGuard<Vec<Vec<g
 
             match game.get_tile_state(&Position { x, y }).unwrap() {
                 TileState::Covered(flag_opt) => match flag_opt {
-                    None => {}
+                    None => {
+                        button.set_label(" ");
+                    }
                     Some(flag) => match flag {
                         FlagState::Questionable => {
                             button.set_label("?");
@@ -45,7 +50,9 @@ fn update_grid(mut game: MutexGuard<StdMinrsGame>, btn_mtx: MutexGuard<Vec<Vec<g
                             button.set_label("*");
                         }
                         TileContents::MineCount(count) => {
-                            if count > 0 {
+                            if count == 0 {
+                                button.set_label(" ");
+                            } else {
                                 button.set_label(&format!("{count}"));
                             }
                         }
@@ -54,6 +61,7 @@ fn update_grid(mut game: MutexGuard<StdMinrsGame>, btn_mtx: MutexGuard<Vec<Vec<g
             }
         }
     }
+    // *looks up* triple nested decision struture in a double nested loop? O.o
 }
 
 fn build_ui(application: &gtk::Application) {
@@ -73,12 +81,22 @@ fn build_ui(application: &gtk::Application) {
             let button = gtk::Button::new();
             let d_game = arc_game.clone();
             let d_btns = arc_buttons.clone();
-            #[allow(unused_must_use)]
-            button.connect_clicked(move |_| {
-                let mut game = d_game.lock().unwrap();
-                // TODO: Feedback when move impossible.
-                game.uncover_tile(&Position { x, y });
-                update_grid(game, d_btns.lock().unwrap());
+            #[allow(unused_must_use)] // there are a lot of errors to no-op on..
+            button.connect_event(move |_btn, e| {
+                if e.event_type() == gdk::EventType::ButtonPress {
+                    let pos = Position { x, y };
+                    let mut game = d_game.lock().unwrap();
+                    if e.button().unwrap_or(0) == 1 {
+                        game.uncover_tile(&pos);
+                    } else if e.button().unwrap_or(0) == 3 {
+                        // Uh. So we can attempt uncovering neighbors, then cycling the flag.
+                        // One of these will always error. But.. Whatever.
+                        game.uncover_neighbors(&pos);
+                        game.cycle_flag(&pos);
+                    }
+                    update_grid(game, d_btns.lock().unwrap());
+                }
+                return gtk::Inhibit(false);
             });
             let gbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             button.set_size_request(50, 50);
