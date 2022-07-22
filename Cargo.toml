@@ -5,3 +5,4 @@ authors = ["Luna Hart luna@night.horse"]
 
 [dependencies]
 rand = "0.8"
+gtk = "0.15.5"
