@@ -43,6 +43,10 @@ impl StdTile {
             flag: None,
         }
     }
+
+    fn set_mine(&mut self, mine: bool) {
+        self.mine = mine;
+    }
 }
 
 trait Tile {
@@ -141,19 +145,23 @@ pub trait MinrsGame {
 }
 
 pub struct StdMinrsGame {
+    started: bool,
     game_over: bool,
     board: Vec<Vec<StdTile>>,
     width: u8,
     height: u8,
+    mine_count: u16,
 }
 
 impl StdMinrsGame {
     pub fn new(width: u8, height: u8, mine_count: u16) -> MinrsResult<StdMinrsGame> {
         let mut new_game = StdMinrsGame {
+            started: false,
             game_over: false,
             board: Vec::new(),
             width,
             height,
+            mine_count,
         };
 
         if width < MIN_BOARD_DIMENSION || height < MIN_BOARD_DIMENSION {
@@ -165,8 +173,24 @@ impl StdMinrsGame {
             return Err(MinrsError::InvalidArgument);
         }
 
-        let mut rng = rand::thread_rng();
+        // create the board
+        for _col in 0..width {
+            let mut cur_col: Vec<StdTile> = Vec::new();
+            for _row in 0..height {
+                cur_col.push(StdTile::new(false));
+            }
+            new_game.board.push(cur_col);
+        }
 
+        new_game.generate_mines(mine_count)?;
+
+        return Ok(new_game);
+    }
+
+    fn generate_mines(&mut self, mine_count: u16) -> MinrsResult<()> {
+        let mut rng_vec = HashSet::new();
+        let tile_count: u16 = self.get_width() as u16 * self.get_height() as u16;
+        let mut rng = rand::thread_rng();
         // create a unique set of random numbers indexing the tiles as:
         // col * width + row
         // XXX I feel like there might be a nicer way to do this?
@@ -175,24 +199,22 @@ impl StdMinrsGame {
         //     board if it implements the Collections trait.
         //     Further, it would be more efficient to be able to regenerate a
         //     single mine tile if it is chosen first.
-        let mut rng_vec = HashSet::new();
         for _i in 0..mine_count {
             while !rng_vec.insert(rng.gen_range(0..tile_count)) {}
         }
 
         // create the board
         let mut idx = 0;
-        for _col in 0..width {
-            let mut cur_col: Vec<StdTile> = Vec::new();
-            for _row in 0..height {
+        for x in 0..self.get_width() {
+            for y in 0..self.get_height() {
                 let mine = rng_vec.contains(&idx);
-                cur_col.push(StdTile::new(mine));
+                let pos = Position { x, y };
+                self.mod_tile(&pos, |t| t.set_mine(mine))?;
                 idx += 1;
             }
-            new_game.board.push(cur_col);
         }
 
-        return Ok(new_game);
+        Ok(())
     }
 
     fn mod_tile<B, F>(&mut self, pos: &Position, mut f: F) -> MinrsResult<B>
@@ -284,22 +306,35 @@ impl MinrsGame for StdMinrsGame {
         match self_tile.get_contents(self.get_neighbors(pos)?) {
             TileContents::MineCount(mine_count) => {
                 if mine_count == 0 {
+                    self.started = true; // enforce started game
+                    self.mod_tile(pos, |tile| tile.uncover())??;
                     for n_pos in neighbors_pos {
                         let n = self.get_tile(&n_pos)?;
-                        // block recursion on uncovered or mine
                         if !n.is_covered() {
-                            continue;
-                        }
-                        if !n.is_mine() {
                             continue;
                         }
                         self.uncover_tile(&n_pos)?;
                     }
+                    return Ok(());
                 }
             }
             TileContents::Mine => {
-                self.game_over = true;
+                // don't game over on first move..
+                if self.started == true {
+                    self.game_over = true;
+                }
             }
+        }
+
+        // If we are here on the first move, we didn't open a "sea" above.
+        // We want to ensure the player's first move opens a sea of empty
+        // tiles.
+        // So, regenerate the board and recurse uncovering the desired tile...
+        // And the player is none the wiser >:3c
+        if !self.started {
+            self.generate_mines(self.mine_count)?;
+            self.uncover_tile(pos)?;
+            return Ok(());
         }
 
         self.mod_tile(pos, |tile| tile.uncover())??;

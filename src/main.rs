@@ -73,13 +73,22 @@ fn build_ui(application: &gtk::Application) {
             let button = gtk::Button::new();
             let d_game = arc_game.clone();
             let d_btns = arc_buttons.clone();
+            #[allow(unused_must_use)]
             button.connect_clicked(move |_| {
                 let mut game = d_game.lock().unwrap();
                 // TODO: Feedback when move impossible.
-                game.uncover_tile(&Position { x, y }).unwrap();
+                game.uncover_tile(&Position { x, y });
                 update_grid(game, d_btns.lock().unwrap());
             });
+            let gbox = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            button.set_size_request(50, 50);
+            button.set_expand(false);
+            button.set_hexpand(false);
+            button.set_margin(0);
+            //            gbox.add(&button);
+            //            gbox.set_resize_mode(gtk::ResizeMode::Parent);
             grid.attach(&button, x as i32, y as i32, 1, 1);
+            gbox.set_expand(false);
             buttons_row_arr.push(button)
         }
         buttons.push(buttons_row_arr);
