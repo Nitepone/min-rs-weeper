@@ -1,6 +1,12 @@
-# Minesweeper! In Rust!
+# Minesweeper! In Rust! With a GTK GUI!
 
-Truly a feat that noone has ever attempted, and an original idea. This is a
-project I am doing over a weekend to have some evidence that I can write
-Rust. Maybe also a testbed for playing with Rust features that I want to
-learn more about.
+![image of minrsweeper](./docs/img/minrsweeper.png)
+
+Just a cute little project to play around with. It's a fully featured
+Minesweeper clone.
+
+## Controls:
+
+- Left click to Uncover a tile
+- Right click a covered tile to place a flag
+- Right click an uncovered number tile to uncover unflagged neighbors
