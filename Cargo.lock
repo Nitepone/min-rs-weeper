@@ -378,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "min-rs-weeper"
-version = "0.0.1"
+version = "1.0.0"
 dependencies = [
  "gtk",
  "rand",

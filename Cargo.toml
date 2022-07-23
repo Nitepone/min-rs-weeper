@@ -1,7 +1,9 @@
 [package]
 name = "min-rs-weeper"
-version = "0.0.1"
+description = "Simple Minesweeper"
+version = "1.0.0"
 authors = ["Luna Hart luna@night.horse"]
+edition = "2021"
 
 [dependencies]
 rand = "0.8"
