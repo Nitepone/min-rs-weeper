@@ -140,9 +140,14 @@ pub trait MinrsGame {
     ///        the mines counted by the target tile. (Else, this move is self
     ///        destructive)
     fn uncover_neighbors(&mut self, position: &Position) -> MinrsResult<()>;
-    fn get_tile_state(&mut self, position: &Position) -> MinrsResult<TileState>;
+    /// Get the TileState of a tile at a position.
+    fn get_tile_state(&self, position: &Position) -> MinrsResult<TileState>;
+    /// Get the width of the current game.
     fn get_width(&self) -> u8;
+    /// Get the height of the current game.
     fn get_height(&self) -> u8;
+    /// Check if the game is won.
+    fn victory(&self) -> bool;
 }
 
 pub struct StdMinrsGame {
@@ -294,11 +299,6 @@ impl MinrsGame for StdMinrsGame {
     }
 
     fn uncover_tile(&mut self, pos: &Position) -> MinrsResult<()> {
-        // XXX(luna) Thinking gameover lockout for uncover shouldn't be done in model.
-        //if self.game_over {
-        //    return Err(MinrsError::GameOver);
-        //}
-
         let self_tile = self.get_tile(pos)?;
         if !self_tile.is_covered() {
             return Err(MinrsError::InvalidArgument);
@@ -391,7 +391,7 @@ impl MinrsGame for StdMinrsGame {
         return Ok(());
     }
 
-    fn get_tile_state(&mut self, position: &Position) -> MinrsResult<TileState> {
+    fn get_tile_state(&self, position: &Position) -> MinrsResult<TileState> {
         Ok(self
             .get_tile(position)?
             .get_state(self.get_neighbors(position)?))
@@ -403,6 +403,14 @@ impl MinrsGame for StdMinrsGame {
 
     fn get_height(&self) -> u8 {
         self.height
+    }
+
+    fn victory(&self) -> bool {
+        let in_progress = self.board.iter().all(|row| {
+            row.iter()
+                .all(|tile| !(tile.is_covered() && !tile.is_mine()))
+        });
+        return in_progress;
     }
 }
 
@@ -443,7 +451,7 @@ mod tests {
         let h = 8;
         let w = 8;
         let ts_covered = TileState::Covered(None);
-        let mut game = StdMinrsGame::new(w, h, 0).unwrap();
+        let game = StdMinrsGame::new(w, h, 0).unwrap();
         for x in 0..h {
             for y in 0..w {
                 assert_eq!(game.get_tile_state(&Position { x, y }).unwrap(), ts_covered);
